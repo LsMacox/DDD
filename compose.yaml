@@ -1,13 +1,12 @@
-
 services:
-###> doctrine/doctrine-bundle ###
   database:
-    image: postgres:${POSTGRES_VERSION:-16}-alpine
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-app}
-      # You should definitely change the password in production
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-!ChangeMe!}
-      POSTGRES_USER: ${POSTGRES_USER:-app}
+    build:
+      context: ./
+      dockerfile: ./docker/postgres/Dockerfile
+    ports:
+      - ${POSTGRES_PORT}:5432
+    env_file:
+      - ./docker/.env
     healthcheck:
       test: ["CMD", "pg_isready", "-d", "${POSTGRES_DB:-app}", "-U", "${POSTGRES_USER:-app}"]
       timeout: 5s
@@ -15,11 +14,50 @@ services:
       start_period: 60s
     volumes:
       - database_data:/var/lib/postgresql/data:rw
-      # You may use a bind-mounted host directory instead, so that it is harder to accidentally remove the volume and lose all your data!
-      # - ./docker/db/data:/var/lib/postgresql/data:rw
-###< doctrine/doctrine-bundle ###
+
+  php-fpm:
+    build:
+      context: ./
+      dockerfile: ./docker/php-fpm/Dockerfile
+      args:
+        - PUID=${PUID}
+        - PGID=${PGID}
+        - INSTALL_XDEBUG=${INSTALL_XDEBUG}
+    env_file:
+      - ./docker/.env
+    volumes: &volumes
+      - ./src:/var/www/src:cached
+      - ./config:/var/www/config:cached
+      - ./templates:/var/www/templates:cached
+      - ./public:/var/www/public:cached
+      - ./tests:/var/www/tests:cached
+      - ./bin:/var/www/bin:cached
+      - ./assets:/var/www/assets:cached
+      - ./translations:/var/www/translations:cached
+      - ./vendor:/var/www/vendor:cached
+      - ./.env:/var/www/.env:cached
+      - ./.env.dev:/var/www/.env.dev:cached
+      - ./.env.test:/var/www/.env.test:cached
+      - ./composer.json:/var/www/composer.json:cached
+      - ./composer.lock:/var/www/composer.lock:cached
+      - ./phpunit.xml.dist:/var/www/phpunit.xml.dist:cached
+      - ./importmap.php:/var/www/importmap.php:cached
+      - ./symfony.lock:/var/www/symfony.lock:cached
+    environment:
+      PHP_IDE_CONFIG: "serverName=app-server"
+
+  nginx:
+    build:
+      context: ./docker/nginx
+    ports:
+      - ${NGINX_HOST_HTTP_PORT}:80
+    env_file:
+      - ./docker/.env
+    volumes: *volumes
+    depends_on:
+      - php-fpm
+    extra_hosts:
+      - host.docker.internal:host-gateway
 
 volumes:
-###> doctrine/doctrine-bundle ###
   database_data:
-###< doctrine/doctrine-bundle ###
